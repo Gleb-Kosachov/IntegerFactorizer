@@ -1,0 +1,3 @@
+[submodule "Dependencies/blanczos"]
+	path = Dependencies/blanczos
+	url = https://github.com/SebWouters/blanczos.git
