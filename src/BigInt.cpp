@@ -7,6 +7,7 @@
 
 #include "BigInt.hpp"
 #include <cmath>
+#include <cstring>
 #include <iomanip>
 #include <complex>
 #include <exception>
@@ -75,6 +76,36 @@ bool BigInt::operator>=(const BigInt &other) const
 }
 
 bool BigInt::operator<=(const BigInt &other) const
+{
+    return this->operator<(other) || this->operator==(other);
+}
+
+bool BigInt::operator>(int64_t other) const
+{
+    return mpz_cmp_si(n, other) > 0;
+}
+
+bool BigInt::operator<(int64_t other) const
+{
+    return mpz_cmp_si(n, other) < 0;
+}
+
+bool BigInt::operator==(int64_t other) const
+{
+    return mpz_cmp_si(n, other) == 0;
+}
+
+bool BigInt::operator!=(int64_t other) const
+{
+    return !this->operator==(other);
+}
+
+bool BigInt::operator>=(int64_t other) const
+{
+    return this->operator>(other) || this->operator==(other);
+}
+
+bool BigInt::operator<=(int64_t other) const
 {
     return this->operator<(other) || this->operator==(other);
 }

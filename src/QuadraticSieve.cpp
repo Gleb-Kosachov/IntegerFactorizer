@@ -11,6 +11,7 @@
 #include <fstream>
 #include <thread>
 #include <string>
+#include <vector>
 #include <cmath>
 #include <set>
 #include <map>
@@ -27,7 +28,7 @@ int64_t BinPow(int64_t Base, uint64_t Power, int64_t Mod)
 
 BigInt SquareRootModP(const BigInt &a, int64_t p)
 {
-    if (a % p == 0ll) return 0ll;
+    if (a % p == 0ll) return static_cast<int64_t>(0);
     if (p == 2) return a % p;
     int64_t Mod8 = p % 8ll;
     if (Mod8 == 1)
@@ -438,7 +439,7 @@ void TraverseB(const BigInt &n, const BigInt &a, const std::vector<uint32_t> &Cu
         B[i] = (SqrtNModP[CurrentFactorIndices[i]] * (a / FactorBase[CurrentFactorIndices[i]]) * BinPow(((a / FactorBase[CurrentFactorIndices[i]]) % FactorBase[CurrentFactorIndices[i]]).Int(), FactorBase[CurrentFactorIndices[i]] - 2, FactorBase[CurrentFactorIndices[i]])) % a;
 
     uint32_t Mask = 0;
-    BigInt b = 0ll;
+    BigInt b = static_cast<int64_t>(0);
     for (int i = 0; i < NumFactorsOfA; i++)
         b += B[i];
     for (int i = 0; i < NumPrimesInFactorBase; i++)

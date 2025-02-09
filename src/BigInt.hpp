@@ -9,6 +9,7 @@
 #define BigInt_hpp
 
 #include <iostream>
+#include <string>
 #include <gmp.h>
 
 class BigInt
@@ -55,6 +56,13 @@ public:
     bool operator!=(const BigInt &) const;
     bool operator>=(const BigInt &) const;
     bool operator<=(const BigInt &) const;
+    
+    bool operator>(int64_t) const;
+    bool operator<(int64_t) const;
+    bool operator==(int64_t) const;
+    bool operator!=(int64_t) const;
+    bool operator>=(int64_t) const;
+    bool operator<=(int64_t) const;
     
     BigInt operator=(BigInt &&) noexcept;
     BigInt operator=(const BigInt &) noexcept;
