@@ -9,6 +9,7 @@
 #define BigInt_hpp
 
 #include <iostream>
+#include <cstdint>
 #include <string>
 #include <gmp.h>
 
