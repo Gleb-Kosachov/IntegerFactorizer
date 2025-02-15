@@ -122,9 +122,9 @@ BigInt ChooseMultiplier(const BigInt &n)
 
 int64_t ChoosePrimeBound(const BigInt &n)
 {
-    std::pair<uint32_t, int64_t> Values[] = { {20, 1200}, {30, 4000}, {40, 20000}, {60, 160000}, {80, 1300000}, {100, 2700000} };
+    std::pair<uint32_t, int64_t> Values[] = { {20, 1200}, {30, 4000}, {40, 20000}, {60, 160000}, {80, 1300000}, {100, 2700000}, {110, 6300000} };
     uint32_t Size = n.SizeInBase(10);
-    for (int i = 0; i < 6; i++)
+    for (int i = 0; i < 7; i++)
         if (std::max(Size, Values[i].first) - std::min(Size, Values[i].first) <= 3)
             return Values[i].second;
     throw std::runtime_error("Failed to select B");
@@ -132,9 +132,9 @@ int64_t ChoosePrimeBound(const BigInt &n)
 
 int64_t ChooseSieveSize(const BigInt &n)
 {
-    std::pair<uint32_t, int64_t> Values[] = { {20, 65536}, {30, 65536}, {40, 65536}, {60, 65536}, {80, 3 * 65536}, {100, 9 * 65536} };
+    std::pair<uint32_t, int64_t> Values[] = { {20, 65536}, {30, 65536}, {40, 65536}, {60, 65536}, {80, 3 * 65536}, {100, 9 * 65536}, {110, 13 * 65536} };
     uint32_t Size = n.SizeInBase(10);
-    for (int i = 0; i < 6; i++)
+    for (int i = 0; i < 7; i++)
         if (std::max(Size, Values[i].first) - std::min(Size, Values[i].first) <= 3)
             return Values[i].second;
     throw std::runtime_error("Failed to select M");
@@ -142,9 +142,9 @@ int64_t ChooseSieveSize(const BigInt &n)
 
 uint32_t ChooseLargePrimeCutoff(const BigInt &n)
 {
-    std::pair<uint32_t, int64_t> Values[] = { {20, 0}, {30, 10}, {40, 15}, {60, 30}, {80, 30}, {100, 50} };
+    std::pair<uint32_t, int64_t> Values[] = { {20, 0}, {30, 10}, {40, 15}, {60, 30}, {80, 30}, {100, 50}, {110, 50} };
     uint32_t Size = n.SizeInBase(10);
-    for (int i = 0; i < 6; i++)
+    for (int i = 0; i < 7; i++)
         if (std::max(Size, Values[i].first) - std::min(Size, Values[i].first) <= 3)
             return Values[i].second;
     throw std::runtime_error("Failed to select large prime cutoff");
@@ -373,43 +373,40 @@ void TrialDivision(const BigInt &n, const BigInt &a, const std::vector<uint32_t>
     }
 }
 
-void GetSievePointers(uint16_t ** SievePointers, const std::vector<uint32_t> &CurrentFactorIndices, const int64_t *RootsModP, int64_t M, const std::vector<int64_t> &FactorBase, uint32_t NumPrimesInFactorBase, uint16_t *Sieve)
+void GetSievePointers(uint8_t **SievePointers, const std::vector<uint32_t> &CurrentFactorIndices, const int64_t *RootsModP, int64_t M, const int64_t *FactorBase, uint32_t NumPrimesInFactorBase, uint8_t *Sieve)
 {
     std::vector<uint32_t>::const_iterator NextFactorOfA = CurrentFactorIndices.begin();
-    for (int i = SmallPrimeBound; i < NumPrimesInFactorBase; i++)
+    for (int i = SmallPrimeBound; i < NumPrimesInFactorBase; i++, SievePointers += 2, RootsModP += 2, FactorBase++)
     {
         if (NextFactorOfA != CurrentFactorIndices.end() && *NextFactorOfA == i)
         {
             NextFactorOfA++;
-            SievePointers[i * 2] = SievePointers[i * 2 + 1] = nullptr;
+            *SievePointers = SievePointers[1] = nullptr;
             continue;
         }
-        int64_t CurrentPrime = FactorBase[i];
-        int64_t j = -((M / CurrentPrime + 1) * CurrentPrime); j -= CurrentPrime;
-        int64_t k = j + RootsModP[i * 2] + M;
-        j += RootsModP[i * 2 + 1] + M;
-        while (j < 0) j += CurrentPrime;
-        while (k < 0) k += CurrentPrime;
-        if (k == j) SievePointers[i * 2 + 1] = nullptr;
-        else SievePointers[i * 2 + 1] = Sieve + k;
-        SievePointers[i * 2] = Sieve + j;
+        int64_t CurrentPrime = *FactorBase;
+        int64_t j = (M + *RootsModP) % CurrentPrime;
+        int64_t k = (M + RootsModP[1]) % CurrentPrime;
+        if (k == j) SievePointers[1] = nullptr;
+        else SievePointers[1] = Sieve + k;
+        *SievePointers = Sieve + j;
     }
 }
 
 #ifdef BLOCK_SIEVING
-void AccumulateLogs(const BigInt &a, const std::vector<uint32_t> &CurrentFactorIndices, int64_t M, const std::vector<int64_t> &FactorBase, uint32_t NumPrimesInFactorBase, uint32_t FactorBaseBlockBound, const std::vector<uint32_t> &FactorBaseLogs, uint16_t *Sieve, uint16_t **SievePointers)
+void AccumulateLogs(const BigInt &a, const std::vector<uint32_t> &CurrentFactorIndices, int64_t M, const std::vector<int64_t> &FactorBase, uint32_t NumPrimesInFactorBase, uint32_t FactorBaseBlockBound, const std::vector<uint32_t> &FactorBaseLogs, uint8_t *Sieve, uint8_t **SievePointers)
 {
-    uint16_t *SieveEnd = Sieve + 2 * M;
-    uint16_t const *End = SieveEnd + SievingBlockSize;
-    for (uint16_t *BlockEnd = Sieve + SievingBlockSize; BlockEnd < End; BlockEnd += SievingBlockSize)
+    uint8_t *SieveEnd = Sieve + 2 * M;
+    uint8_t const *End = SieveEnd + SievingBlockSize;
+    for (uint8_t *BlockEnd = Sieve + SievingBlockSize; BlockEnd < End; BlockEnd += SievingBlockSize)
     {
         if (BlockEnd > SieveEnd) BlockEnd = SieveEnd;
         for (int i = SmallPrimeBound; i < FactorBaseBlockBound; i++)
         {
-            uint16_t *ptr = SievePointers[i * 2];
+            uint8_t *ptr = SievePointers[i * 2];
             if (!ptr) continue;
             int64_t CurrentPrime = FactorBase[i];
-            uint16_t log = FactorBaseLogs[i];
+            uint8_t log = FactorBaseLogs[i];
             while (ptr < BlockEnd)
             {
                 *ptr += log;
@@ -427,10 +424,10 @@ void AccumulateLogs(const BigInt &a, const std::vector<uint32_t> &CurrentFactorI
         }
         for (int i = FactorBaseBlockBound; i < NumPrimesInFactorBase; i++)
         {
-            uint16_t *ptr = SievePointers[i * 2];
+            uint8_t *ptr = SievePointers[i * 2];
             if (!ptr) continue;
             int64_t CurrentPrime = FactorBase[i];
-            uint16_t log = FactorBaseLogs[i];
+            uint8_t log = FactorBaseLogs[i];
             if (ptr < BlockEnd)
             {
                 *ptr += log;
@@ -448,15 +445,15 @@ void AccumulateLogs(const BigInt &a, const std::vector<uint32_t> &CurrentFactorI
     }
 }
 #else
-void AccumulateLogs(const BigInt &a, const std::vector<uint32_t> &CurrentFactorIndices, int64_t M, const std::vector<int64_t> &FactorBase, uint32_t NumPrimesInFactorBase, const std::vector<uint32_t> &FactorBaseLogs, uint16_t *Sieve, uint16_t **SievePointers)
+void AccumulateLogs(const BigInt &a, const std::vector<uint32_t> &CurrentFactorIndices, int64_t M, const std::vector<int64_t> &FactorBase, uint32_t NumPrimesInFactorBase, const std::vector<uint32_t> &FactorBaseLogs, uint8_t *Sieve, uint8_t **SievePointers)
 {
-    uint16_t const *SieveEnd = Sieve + 2 * M;
+    uint8_t const *SieveEnd = Sieve + 2 * M;
     for (int i = SmallPrimeBound; i < NumPrimesInFactorBase; i++)
     {
         if (!SievePointers[i * 2]) continue;
         int64_t CurrentPrime = FactorBase[i];
-        uint16_t log = FactorBaseLogs[i];
-        uint16_t *ptr = SievePointers[i * 2];
+        uint8_t log = FactorBaseLogs[i];
+        uint8_t *ptr = SievePointers[i * 2];
         while (ptr < SieveEnd)
         {
             *ptr += log;
@@ -476,24 +473,24 @@ void AccumulateLogs(const BigInt &a, const std::vector<uint32_t> &CurrentFactorI
 }
 #endif
 
-void Sieve(const BigInt &n, const BigInt &a, const std::vector<uint32_t> &CurrentFactorIndices, const BigInt &b, const int64_t *RootsModP, int64_t M, uint32_t LargePrimeCutoff, const std::vector<int64_t> &FactorBase, uint32_t NumPrimesInFactorBase, uint32_t FactorBaseBlockBound, const std::vector<uint32_t> &FactorBaseLogs, uint16_t *Sieve, uint16_t ** SievePointers, std::vector<std::pair<std::pair<BigInt, BigInt>, std::vector<uint32_t>>> *Matrix, std::map<BigInt, std::pair<BigInt, std::vector<uint32_t>>> *P, std::mutex *MatrixMutex, std::mutex *PMutex)
+void Sieve(const BigInt &n, const BigInt &a, const std::vector<uint32_t> &CurrentFactorIndices, const BigInt &b, const int64_t *RootsModP, int64_t M, uint32_t LargePrimeCutoff, const std::vector<int64_t> &FactorBase, uint32_t NumPrimesInFactorBase, uint32_t FactorBaseBlockBound, const std::vector<uint32_t> &FactorBaseLogs, uint8_t *Sieve, uint8_t ** SievePointers, std::vector<std::pair<std::pair<BigInt, BigInt>, std::vector<uint32_t>>> *Matrix, std::map<BigInt, std::pair<BigInt, std::vector<uint32_t>>> *P, std::mutex *MatrixMutex, std::mutex *PMutex)
 {
-    uint16_t SmallThreshold = ((a * M + b) * (a * M + b) - n).SizeInBase(2) - a.SizeInBase(2);
-    uint16_t LargeThreshold = SmallThreshold - LargePrimeCutoff;
+    uint8_t SmallThreshold = ((a * M + b) * (a * M + b) - n).SizeInBase(2) - a.SizeInBase(2);
+    uint8_t LargeThreshold = SmallThreshold - LargePrimeCutoff;
     SmallThreshold -= LargePrimeCutoff * 2;
-    uint32_t v = 0;
+    uint8_t v = 0;
     while ((1 << v) < SmallThreshold) v++;
-    Sieve[0] = (1 << v) - SmallThreshold;
-    for (int i = 1; i < 2 * M; i++) Sieve[i] = Sieve[i - 1];
-    LargeThreshold += Sieve[0];
-    uint16_t w = 0;
-    while (v < 16) w |= 1 << (v++);
+    uint8_t SieveInitValue = (1 << v) - SmallThreshold;
+    LargeThreshold += SieveInitValue;
+    std::memset(Sieve, SieveInitValue, 2 * M);
+    uint8_t w = 0;
+    while (v < 8) w |= 1 << (v++);
 #ifdef BLOCK_SIEVING
     AccumulateLogs(a, CurrentFactorIndices, M, FactorBase, NumPrimesInFactorBase, FactorBaseBlockBound, FactorBaseLogs, Sieve, SievePointers);
 #else
     AccumulateLogs(a, CurrentFactorIndices, M, FactorBase, NumPrimesInFactorBase, FactorBaseLogs, Sieve, SievePointers);
 #endif
-    uint16_t *CurrentSievePtr = Sieve;
+    uint8_t *CurrentSievePtr = Sieve;
     for (int64_t i = -M; i < M; i++, CurrentSievePtr++)
     {
         if ((*CurrentSievePtr & w) == 0) continue;
@@ -514,7 +511,7 @@ void Sieve(const BigInt &n, const BigInt &a, const std::vector<uint32_t> &Curren
     }
 }
 
-void TraverseB(const BigInt &n, const BigInt &a, const std::vector<uint32_t> &CurrentFactorIndices, BigInt *B, int64_t M, uint32_t LargePrimeCutoff, const std::vector<int64_t> &FactorBase, uint32_t NumPrimesInFactorBase, uint32_t FactorBaseBlockBound, const std::vector<uint32_t> &FactorBaseLogs, const std::vector<int64_t> &SqrtNModP, int64_t *InverseOfAModP, uint32_t NumFactorsOfA, int64_t *BTimesInverseA, int64_t *RootsModP, uint16_t *SieveArray, uint16_t **SievePointers, std::mutex *MatrixMutex, std::mutex *PMutex, std::vector<std::pair<std::pair<BigInt, BigInt>, std::vector<uint32_t>>> *Matrix, std::map<BigInt, std::pair<BigInt, std::vector<uint32_t>>> *P)
+void TraverseB(const BigInt &n, const BigInt &a, const std::vector<uint32_t> &CurrentFactorIndices, BigInt *B, int64_t M, uint32_t LargePrimeCutoff, const std::vector<int64_t> &FactorBase, uint32_t NumPrimesInFactorBase, uint32_t FactorBaseBlockBound, const std::vector<uint32_t> &FactorBaseLogs, const std::vector<int64_t> &SqrtNModP, int64_t *InverseOfAModP, uint32_t NumFactorsOfA, int64_t *BTimesInverseA, int64_t *RootsModP, uint8_t *SieveArray, uint8_t **SievePointers, std::mutex *MatrixMutex, std::mutex *PMutex, std::vector<std::pair<std::pair<BigInt, BigInt>, std::vector<uint32_t>>> *Matrix, std::map<BigInt, std::pair<BigInt, std::vector<uint32_t>>> *P)
 {
     for (int i = 0; i < NumPrimesInFactorBase; i++)
         InverseOfAModP[i] = BinPow((a % FactorBase[i]).Int(), FactorBase[i] - 2, FactorBase[i]);
@@ -538,7 +535,7 @@ void TraverseB(const BigInt &n, const BigInt &a, const std::vector<uint32_t> &Cu
         RootsModP[i * 2] = (FactorBase[i] - RootsModP[i * 2]) % FactorBase[i];
         RootsModP[i * 2 + 1] = (RootsModP[i * 2] + (2 * SqrtNModP[i] * InverseOfAModP[i]) % FactorBase[i]) % FactorBase[i];
     }
-    GetSievePointers(SievePointers, CurrentFactorIndices, RootsModP, M, FactorBase, NumPrimesInFactorBase, SieveArray);
+    GetSievePointers(SievePointers, CurrentFactorIndices, RootsModP, M, FactorBase.data(), NumPrimesInFactorBase, SieveArray);
     Sieve(n, a, CurrentFactorIndices, b, RootsModP, M, LargePrimeCutoff, FactorBase, NumPrimesInFactorBase, FactorBaseBlockBound, FactorBaseLogs, SieveArray, SievePointers, Matrix, P, MatrixMutex, PMutex);
     for (int i = 1; i < (1 << (NumFactorsOfA - 1)); i++)
     {
@@ -567,7 +564,7 @@ void TraverseB(const BigInt &n, const BigInt &a, const std::vector<uint32_t> &Cu
                 RootsModP[j * 2 + 1] %= FactorBase[j];
             }
         }
-        GetSievePointers(SievePointers, CurrentFactorIndices, RootsModP, M, FactorBase, NumPrimesInFactorBase, SieveArray);
+        GetSievePointers(SievePointers, CurrentFactorIndices, RootsModP, M, FactorBase.data(), NumPrimesInFactorBase, SieveArray);
         Sieve(n, a, CurrentFactorIndices, b, RootsModP, M, LargePrimeCutoff, FactorBase, NumPrimesInFactorBase, FactorBaseBlockBound, FactorBaseLogs, SieveArray, SievePointers, Matrix, P, MatrixMutex, PMutex);
     }
 }
@@ -605,8 +602,8 @@ std::pair<BigInt, BigInt> QuadraticSieve(const BigInt &n, uint32_t NumThreads = 
     std::vector<std::vector<BigInt>> B(NumThreads);
     std::vector<std::vector<int64_t>> BTimesInverseA(NumThreads);
     std::vector<std::vector<int64_t>> RootsModP(NumThreads);
-    std::vector<std::vector<uint16_t>> Sieves(NumThreads);
-    std::vector<std::vector<uint16_t *>> SievePointers(NumThreads);
+    std::vector<std::vector<uint8_t>> Sieves(NumThreads);
+    std::vector<std::vector<uint8_t *>> SievePointers(NumThreads);
     for (int i = 0; i < NumThreads; i++)
     {
         CurrentFactorIndices[i] = std::vector<uint32_t>(FactorOfABits.size());
@@ -614,8 +611,8 @@ std::pair<BigInt, BigInt> QuadraticSieve(const BigInt &n, uint32_t NumThreads = 
         B[i] = std::vector<BigInt>(FactorOfABits.size());
         BTimesInverseA[i] = std::vector<int64_t>(FactorOfABits.size() * NumPrimesInFactorBase);
         RootsModP[i] = std::vector<int64_t>(NumPrimesInFactorBase * 2);
-        Sieves[i] = std::vector<uint16_t>(M * 2);
-        SievePointers[i] = std::vector<uint16_t *>(NumPrimesInFactorBase * 2);
+        Sieves[i] = std::vector<uint8_t>(M * 2);
+        SievePointers[i] = std::vector<uint8_t *>(NumPrimesInFactorBase * 2);
     }
     std::map<BigInt, std::pair<BigInt, std::vector<uint32_t>>> P;
     std::set<BigInt> UsedA;
