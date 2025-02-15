@@ -8,6 +8,7 @@
 #include "BigInt.hpp"
 #include "blanczos.h"
 #include <algorithm>
+#include <cstring>
 #include <fstream>
 #include <thread>
 #include <string>
