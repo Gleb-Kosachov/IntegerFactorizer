@@ -11,6 +11,8 @@
 #include <cstring>
 #include <fstream>
 #include <thread>
+#include <chrono>
+#include <mutex>
 #include <string>
 #include <vector>
 #include <cmath>
