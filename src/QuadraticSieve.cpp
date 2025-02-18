@@ -16,7 +16,7 @@
 #include <mutex>
 #include <string>
 #include <vector>
-#include <latch>
+#include <barrier>
 #include <cmath>
 #include <set>
 #include <map>
@@ -565,7 +565,7 @@ void Sieve(QuadraticSieveData *Data, const BigInt &a, const std::vector<uint32_t
     }
 }
 
-void TraverseB(QuadraticSieveData *Data, std::latch *Latch, uint32_t ThreadIndex)
+void TraverseB(QuadraticSieveData *Data, uint32_t ThreadIndex)
 {
     uint32_t NumPrimesInFactorBase = Data->FactorBase.size();
     uint32_t NumFactorsOfA = Data->FactorOfABits.size();
@@ -630,7 +630,6 @@ void TraverseB(QuadraticSieveData *Data, std::latch *Latch, uint32_t ThreadIndex
         GetSievePointers(Data, Data->SievePointers[ThreadIndex].data(), CurrentFactorIndices, RootsModP.data(), Data->Sieves[ThreadIndex].data());
         Sieve(Data, a, CurrentFactorIndices, b, RootsModP.data(), Data->Sieves[ThreadIndex].data(), Data->SievePointers[ThreadIndex].data());
     }
-    Latch->count_down();
 }
 
 std::pair<BigInt, BigInt> QuadraticSieve(const BigInt &n, uint32_t NumThreads = 1)
@@ -639,7 +638,6 @@ std::pair<BigInt, BigInt> QuadraticSieve(const BigInt &n, uint32_t NumThreads = 
     std::cout << "Size of n is " << n.SizeInBase(2) << " bits\n";
     std::unique_ptr<QuadraticSieveData> Data = std::make_unique<QuadraticSieveData>();
     Data->n = ChooseMultiplier(n);
-    std::vector<std::thread> Threads(NumThreads);
     Data->PrimeBound = ChoosePrimeBound(Data->n);
     std::cout << "Factor base upper bound: " << Data->PrimeBound << "\n";
     CalculateFactorBase(Data.get());
@@ -673,33 +671,48 @@ std::pair<BigInt, BigInt> QuadraticSieve(const BigInt &n, uint32_t NumThreads = 
         Data->SievePointers[i] = std::vector<uint8_t *>(Data->FactorBase.size() * 2);
     }
     Data->a.resize(NumThreads);
-    while (Data->Matrix.size() < Data->FactorBase.size() + 100)
-    {
-        for (int i = 0; i < NumThreads; i++)
-        {
-            Data->a[i] = GetA(Data.get(), Data->CurrentFactorIndices[i]);
-            while (Data->UsedA.contains(Data->a[i]))
-                Data->a[i] = GetA(Data.get(), Data->CurrentFactorIndices[i]);
-            Data->UsedA.insert(Data->a[i]);
-        }
-
-        std::latch Latch(NumThreads);
-        std::chrono::high_resolution_clock::time_point beg = std::chrono::high_resolution_clock::now();
-        for (uint32_t i = 0; i < NumThreads; i++)
-            Threads[i] = std::thread(TraverseB, Data.get(), &Latch, i);
-        Latch.wait();
-        for (int i = 0; i < NumThreads; i++)
-            Threads[i].join();
-        std::cout << "Sieving completed in " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - beg).count() << " milliseconds\nMatrix size: " << Data->Matrix.size() << "\n";
-        std::cout << "Estimated sieving time: " << (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - AlgorithmStart).count() * (Data->FactorBase.size() + 100)) / Data->Matrix.size() << "\n";
-
+    bool Finished = false;
+    std::chrono::high_resolution_clock::time_point beg = std::chrono::high_resolution_clock::now();
+    auto CompletionFunction = [&]() {
+        std::cout << "Sieving completed in " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - beg).count() << " milliseconds\nMatrix size: " << Data->Matrix.size() << "\nEstimated sieving time: " << (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - AlgorithmStart).count() * (Data->FactorBase.size() + 100)) / Data->Matrix.size() << std::endl;
+        beg = std::chrono::high_resolution_clock::now();
         if (Data->Matrix.size() >= Data->FactorBase.size() + 100)
         {
             std::sort(Data->Matrix.begin(), Data->Matrix.end());
             Data->Matrix.resize(std::unique(Data->Matrix.begin(), Data->Matrix.end()) - Data->Matrix.begin());
+            if (Data->Matrix.size() >= Data->FactorBase.size() + 100)
+            {
+                Finished = true;
+                return;
+            }
         }
+        for (int i = 0; i < NumThreads; i++)
+        {
+            do Data->a[i] = GetA(Data.get(), Data->CurrentFactorIndices[i]);
+            while (Data->UsedA.contains(Data->a[i]));
+        }
+    };
+    std::barrier Barrier(NumThreads, CompletionFunction);
+    auto ThreadLambda = [&](uint32_t ThreadIndex) {
+        while (!Finished)
+        {
+            TraverseB(Data.get(), ThreadIndex);
+            Barrier.arrive_and_wait();
+        }
+    };
+    for (int i = 0; i < NumThreads; i++)
+    {
+        do Data->a[i] = GetA(Data.get(), Data->CurrentFactorIndices[i]);
+        while (Data->UsedA.contains(Data->a[i]));
     }
-
+    std::vector<std::thread> Threads;
+    Threads.reserve(NumThreads - 1);
+    for (uint32_t i = 0; i < NumThreads - 1; i++)
+        Threads.emplace_back(ThreadLambda, i);
+    ThreadLambda(NumThreads - 1);
+    for (int i = 0; i < Threads.size(); i++)
+        Threads[i].join();
+    
     Data->FactorBase.push_back(-1);
     std::vector<uint32_t> NonZeroEntries;
     for (int i = 0; i < Data->Matrix.size(); i++)
