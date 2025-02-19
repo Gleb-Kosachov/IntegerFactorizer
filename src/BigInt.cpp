@@ -184,8 +184,6 @@ BigInt operator-(const BigInt &a, int64_t b)
     return Result;
 }
 
-bool Debug = false;
-
 BigInt operator*(const BigInt &a, int64_t b)
 {
     BigInt Result;
