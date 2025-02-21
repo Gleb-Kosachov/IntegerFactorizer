@@ -24,7 +24,7 @@
 //#define BLOCK_SIEVING
 
 static constexpr uint32_t SmallPrimeBound = 200;
-static constexpr uint32_t SievingBlockSize = (1 << 19);
+static constexpr uint32_t SievingBlockSize = (1 << 18);
 
 struct QuadraticSieveData
 {
@@ -535,16 +535,9 @@ void Sieve(QuadraticSieveData *Data, const BigInt &a, const std::vector<uint32_t
     FuncOfM += b;
     FuncOfM *= FuncOfM;
     FuncOfM -= Data->n;
-    uint8_t SmallThreshold = FuncOfM.SizeInBase(2) - a.SizeInBase(2);
-    uint8_t LargeThreshold = SmallThreshold - Data->LargePrimeCutoff;
-    SmallThreshold -= Data->LargePrimeCutoff * 2;
-    uint8_t v = 0;
-    while ((1 << v) < SmallThreshold) v++;
-    uint8_t SieveInitValue = (1 << v) - SmallThreshold;
-    LargeThreshold += SieveInitValue;
-    std::memset(Sieve, SieveInitValue, 2 * Data->M);
-    uint8_t w = 0;
-    while (v < 8) w |= 1 << (v++);
+    uint8_t LargeThreshold = FuncOfM.SizeInBase(2) - a.SizeInBase(2) - Data->LargePrimeCutoff;
+    uint8_t SmallThreshold = LargeThreshold - Data->LargePrimeCutoff;
+    std::memset(Sieve, 0, 2 * Data->M);
 #ifdef BLOCK_SIEVING
     AccumulateLogs(Data, a, CurrentFactorIndices, Sieve, SievePointers);
 #else
@@ -553,7 +546,7 @@ void Sieve(QuadraticSieveData *Data, const BigInt &a, const std::vector<uint32_t
     uint8_t *CurrentSievePtr = Sieve;
     for (int64_t i = -Data->M; i < Data->M; i++, CurrentSievePtr++)
     {
-        if ((*CurrentSievePtr & w) == 0) continue;
+        if (*CurrentSievePtr < SmallThreshold) continue;
         std::vector<uint32_t>::const_iterator NextFactorIndex = CurrentFactorIndices.begin();
         for (int j = 0; j < SmallPrimeBound; j++)
         {
