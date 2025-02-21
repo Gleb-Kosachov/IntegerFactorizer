@@ -422,7 +422,7 @@ void GetSievePointers(QuadraticSieveData *Data, uint8_t **SievePointers, const s
     int64_t *FactorBase = Data->FactorBase.data();
     uint32_t const *NextFactorOfA = CurrentFactorIndices.data();
     uint32_t const *FactorsOfAEnd = NextFactorOfA + CurrentFactorIndices.size();
-    
+    while (NextFactorOfA < FactorsOfAEnd && *NextFactorOfA < SmallPrimeBound) NextFactorOfA++;
     for (int i = SmallPrimeBound; i < NumPrimesInFactorBase; i++, SievePointers += 2, RootsModP += 2, FactorBase++)
     {
         if (NextFactorOfA != FactorsOfAEnd && *NextFactorOfA == i)
@@ -529,7 +529,7 @@ void AccumulateLogs(QuadraticSieveData *Data, const BigInt &a, const std::vector
 }
 #endif
 
-void Sieve(QuadraticSieveData *Data, const BigInt &a, const std::vector<uint32_t> &CurrentFactorIndices, const BigInt &b, const int64_t *RootsModP, uint8_t *Sieve, uint8_t ** SievePointers)
+void Sieve(QuadraticSieveData *Data, const BigInt &a, const std::vector<uint32_t> &CurrentFactorIndices, const BigInt &b, const int64_t *RootsModP, uint8_t *Sieve, uint8_t **SievePointers)
 {
     BigInt FuncOfM = a * Data->M;
     FuncOfM += b;
@@ -547,10 +547,11 @@ void Sieve(QuadraticSieveData *Data, const BigInt &a, const std::vector<uint32_t
     for (int64_t i = -Data->M; i < Data->M; i++, CurrentSievePtr++)
     {
         if (*CurrentSievePtr < SmallThreshold) continue;
-        std::vector<uint32_t>::const_iterator NextFactorIndex = CurrentFactorIndices.begin();
+        const uint32_t *NextFactorIndex = CurrentFactorIndices.data();
+        const uint32_t *FactorIndicesEnd = NextFactorIndex + CurrentFactorIndices.size();
         for (int j = 0; j < SmallPrimeBound; j++)
         {
-            if (NextFactorIndex != CurrentFactorIndices.end() && *NextFactorIndex == j)
+            if (NextFactorIndex != FactorIndicesEnd && *NextFactorIndex == j)
             {
                 NextFactorIndex++;
                 continue;
@@ -603,8 +604,15 @@ void TraverseB(QuadraticSieveData *Data, uint32_t ThreadIndex)
     for (int i = 0; i < NumFactorsOfA; i++)
         B[i] *= 2ll;
     int64_t *CurrentRoots = RootsModP.data();
-    for (int i = 0; i < NumPrimesInFactorBase; i++, CurrentRoots += 2)
+    uint32_t *NextFactorOfA = CurrentFactorIndices.data();
+    uint32_t *FactorsOfAEnd = NextFactorOfA + NumFactorsOfA;
+    for (uint32_t i = 0; i < NumPrimesInFactorBase; i++, CurrentRoots += 2)
     {
+        if (NextFactorOfA != FactorsOfAEnd && *NextFactorOfA == i)
+        {
+            NextFactorOfA++;
+            continue;
+        }
         CurrentRoots[0] = Data->SqrtNModP[i] * InverseOfAModP[i];
         CurrentRoots[0] %= Data->FactorBase[i];
         for (int j = 0; j < NumFactorsOfA; j++)
@@ -633,8 +641,14 @@ void TraverseB(QuadraticSieveData *Data, uint32_t ThreadIndex)
         else b += B[Index];
         CurrentRoots = RootsModP.data();
         int64_t *CurrentBTimesInverseOfA = BTimesInverseA.data() + Index * NumPrimesInFactorBase;
-        for (int j = 0; j < NumPrimesInFactorBase; j++, CurrentRoots += 2, CurrentBTimesInverseOfA++)
+        NextFactorOfA = CurrentFactorIndices.data();
+        for (uint32_t j = 0; j < NumPrimesInFactorBase; j++, CurrentRoots += 2, CurrentBTimesInverseOfA++)
         {
+            if (NextFactorOfA != FactorsOfAEnd && *NextFactorOfA == j)
+            {
+                NextFactorOfA++;
+                continue;
+            }
             CurrentRoots[0] += Data->FactorBase[j] * 2ll;
             CurrentRoots[1] += Data->FactorBase[j] * 2ll;
             if (!Add)
