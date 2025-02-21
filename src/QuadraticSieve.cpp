@@ -657,6 +657,70 @@ void TraverseB(QuadraticSieveData *Data, uint32_t ThreadIndex)
     }
 }
 
+std::pair<BigInt, BigInt> LinearAlgebra(const BigInt &n, QuadraticSieveData *Data, uint32_t NumThreads, std::vector<std::thread> &Threads)
+{
+    Data->FactorBase.push_back(-1);
+    std::vector<uint32_t> NonZeroEntries;
+    for (int i = 0; i < Data->Matrix.size(); i++)
+    {
+        for (int j = 0; j < Data->Matrix[i].second.size(); j++)
+        {
+            NonZeroEntries.push_back(Data->Matrix[i].second[j]);
+            NonZeroEntries.push_back(i);
+        }
+    }
+    std::vector<uint64_t> NullSpaces(Data->Matrix.size());
+    uint32_t NumNullSpaces = blanczos(NonZeroEntries.data(), NonZeroEntries.size() / 2, Data->FactorBase.size(), Data->Matrix.size(), NullSpaces.data());
+    bool Finished = false;
+    std::pair<BigInt, BigInt> Result = std::make_pair(0, 0);
+    std::mutex Mutex;
+    auto ThreadLambda = [&](uint32_t Index) {
+        while (Index < NumThreads && !Finished)
+        {
+            BigInt A = 1, B = 1;
+            for (int j = 0; j < Data->Matrix.size(); j++)
+            {
+                if ((1ull << Index) & NullSpaces[j])
+                {
+                    A *= Data->Matrix[j].first.first;
+                    B *= Data->Matrix[j].first.second;
+                }
+            }
+            A = A.SquareRoot(); B = B.SquareRoot();
+            BigInt gcd1 = gcd(n, (A - B).abs()), gcd2 = gcd(n, (A + B).abs());
+            if (gcd1 != 1 && gcd1 != n)
+            {
+                Mutex.lock();
+                if (Finished)
+                {
+                    Mutex.unlock();
+                    return;
+                }
+                Result = std::make_pair(gcd1, n / gcd1);
+                Mutex.unlock();
+            }
+            if (gcd2 != 1 && gcd2 != n)
+            {
+                Mutex.lock();
+                if (Finished)
+                {
+                    Mutex.unlock();
+                    return;
+                }
+                Result = std::make_pair(gcd2, n / gcd2);
+                Mutex.unlock();
+            }
+            Index += NumThreads;
+        }
+    };
+    for (uint32_t i = 0; i < NumThreads - 1; i++)
+        Threads[i] = std::thread(ThreadLambda, i);
+    ThreadLambda(NumThreads - 1);
+    for (int i = 0; i < NumThreads - 1; i++)
+        Threads[i].join();
+    return Result;
+}
+
 std::pair<BigInt, BigInt> QuadraticSieve(const BigInt &n, uint32_t NumThreads = 1)
 {
     std::chrono::high_resolution_clock::time_point AlgorithmStart = std::chrono::high_resolution_clock::now();
@@ -738,33 +802,5 @@ std::pair<BigInt, BigInt> QuadraticSieve(const BigInt &n, uint32_t NumThreads = 
     for (int i = 0; i < Threads.size(); i++)
         Threads[i].join();
     
-    Data->FactorBase.push_back(-1);
-    std::vector<uint32_t> NonZeroEntries;
-    for (int i = 0; i < Data->Matrix.size(); i++)
-    {
-        for (int j = 0; j < Data->Matrix[i].second.size(); j++)
-        {
-            NonZeroEntries.push_back(Data->Matrix[i].second[j]);
-            NonZeroEntries.push_back(i);
-        }
-    }
-    std::vector<uint64_t> NullSpaces(Data->Matrix.size());
-    uint32_t NumNullSpaces = blanczos(NonZeroEntries.data(), NonZeroEntries.size() / 2, Data->FactorBase.size(), Data->Matrix.size(), NullSpaces.data());
-    for (int i = 0; i < NumNullSpaces; i++)
-    {
-        BigInt A = 1, B = 1;
-        for (int j = 0; j < Data->Matrix.size(); j++)
-        {
-            if ((1ull << i) & NullSpaces[j])
-            {
-                A *= Data->Matrix[j].first.first;
-                B *= Data->Matrix[j].first.second;
-            }
-        }
-        A = A.SquareRoot(); B = B.SquareRoot();
-        BigInt gcd1 = gcd(n, (A - B).abs()), gcd2 = gcd(n, (A + B).abs());
-        if (gcd1 != 1 && gcd1 != n) return std::make_pair(gcd1, n / gcd1);
-        if (gcd2 != 1 && gcd2 != n) return std::make_pair(gcd2, n / gcd2);
-    }
-    return std::pair(0, 0);
+    return LinearAlgebra(n, Data.get(), NumThreads, Threads);
 }
