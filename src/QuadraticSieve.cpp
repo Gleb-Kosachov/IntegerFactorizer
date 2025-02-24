@@ -51,12 +51,15 @@ struct QuadraticSieveData
     std::vector<std::vector<uint8_t *>> SievePointers;
     std::vector<BigInt> a;
     std::set<BigInt> UsedA;
+    std::mutex AMutex;
     
     std::vector<std::pair<std::pair<BigInt, BigInt>, std::vector<uint32_t>>> Matrix;
     std::mutex MatrixMutex;
     
     std::map<BigInt, std::pair<BigInt, std::vector<uint32_t>>> P;
     std::mutex PMutex;
+    
+    bool Running;
 };
 
 int64_t BinPow(int64_t Base, uint64_t Power, int64_t Mod)
@@ -504,26 +507,27 @@ void AccumulateLogs(QuadraticSieveData *Data, const BigInt &a, const std::vector
     uint8_t *FactorBaseLogs = Data->FactorBaseLogs.data();
     
     uint8_t const *SieveEnd = Sieve + 2 * Data->M;
-    for (int i = SmallPrimeBound; i < NumPrimesInFactorBase; i++)
+    uint8_t **CurrentPointers = SievePointers + SmallPrimeBound * 2;
+    for (int i = SmallPrimeBound; i < NumPrimesInFactorBase; i++, CurrentPointers += 2)
     {
-        if (!SievePointers[i * 2]) continue;
+        if (!CurrentPointers[0]) continue;
         int64_t CurrentPrime = FactorBase[i];
         uint8_t log = FactorBaseLogs[i];
-        uint8_t *ptr = SievePointers[i * 2];
+        uint8_t *ptr = CurrentPointers[0];
         while (ptr < SieveEnd)
         {
             *ptr += log;
             ptr += CurrentPrime;
         }
-        SievePointers[i * 2] = ptr;
-        if (ptr = SievePointers[i * 2 + 1])
+        CurrentPointers[0] = ptr;
+        if (ptr = CurrentPointers[1])
         {
             while (ptr < SieveEnd)
             {
                 *ptr += log;
                 ptr += CurrentPrime;
             }
-            SievePointers[i * 2 + 1] = ptr;
+            CurrentPointers[1] = ptr;
         }
     }
 }
@@ -567,107 +571,125 @@ void Sieve(QuadraticSieveData *Data, const BigInt &a, const std::vector<uint32_t
 
 void TraverseB(QuadraticSieveData *Data, uint32_t ThreadIndex)
 {
-    uint32_t NumPrimesInFactorBase = Data->FactorBase.size();
-    uint32_t NumFactorsOfA = Data->FactorOfABits.size();
-    std::vector<uint32_t> &CurrentFactorIndices = Data->CurrentFactorIndices[ThreadIndex];
-    std::vector<int64_t> &InverseOfAModP = Data->InverseOfAModP[ThreadIndex];
-    std::vector<BigInt> &B = Data->B[ThreadIndex];
-    std::vector<int64_t> &BTimesInverseA = Data->BTimesInverseA[ThreadIndex];
-    std::vector<int64_t> &RootsModP = Data->RootsModP[ThreadIndex];
-    BigInt &a = Data->a[ThreadIndex];
-    
-    for (int i = 0; i < NumPrimesInFactorBase; i++)
-        InverseOfAModP[i] = BinPow((a % Data->FactorBase[i]).Int(), Data->FactorBase[i] - 2, Data->FactorBase[i]);
-    for (int i = 0; i < NumFactorsOfA; i++)
+    while (Data->Running)
     {
-        int64_t Factor = Data->FactorBase[CurrentFactorIndices[i]];
-        BigInt AOverFactor = a / Factor;
-        B[i] = Data->SqrtNModP[CurrentFactorIndices[i]] * AOverFactor;
-        AOverFactor %= Factor;
-        B[i] *= BinPow(AOverFactor.Int(), Factor - 2, Factor);
-        B[i] %= a;
-    }
-    uint32_t Mask = 0;
-    BigInt b = static_cast<int64_t>(0);
-    for (int i = 0; i < NumFactorsOfA; i++)
-        b += B[i];
-    int64_t *ptr = BTimesInverseA.data();
-    for (int i = 0; i < NumFactorsOfA; i++)
-    {
-        for (int j = 0; j < NumPrimesInFactorBase; j++, ptr++)
-        {
-            BigInt Current = B[i] * InverseOfAModP[j];
-            Current %= Data->FactorBase[j];
-            *ptr = Current.Int();
-        }
-    }
-    for (int i = 0; i < NumFactorsOfA; i++)
-        B[i] *= 2ll;
-    int64_t *CurrentRoots = RootsModP.data();
-    uint32_t *NextFactorOfA = CurrentFactorIndices.data();
-    uint32_t *FactorsOfAEnd = NextFactorOfA + NumFactorsOfA;
-    for (uint32_t i = 0; i < NumPrimesInFactorBase; i++, CurrentRoots += 2)
-    {
-        if (NextFactorOfA != FactorsOfAEnd && *NextFactorOfA == i)
-        {
-            NextFactorOfA++;
-            continue;
-        }
-        CurrentRoots[0] = Data->SqrtNModP[i] * InverseOfAModP[i];
-        CurrentRoots[0] %= Data->FactorBase[i];
-        for (int j = 0; j < NumFactorsOfA; j++)
-        {
-            CurrentRoots[0] += BTimesInverseA[j * NumPrimesInFactorBase + i];
-            CurrentRoots[0] %= Data->FactorBase[i];
-        }
-        CurrentRoots[0] %= Data->FactorBase[i];
-        CurrentRoots[0] = Data->FactorBase[i] - CurrentRoots[0];
-        CurrentRoots[0] %= Data->FactorBase[i];
+        Data->AMutex.lock();
+        std::cout << "\rFound " << Data->Matrix.size() << " relations" << std::flush;
+        do Data->a[ThreadIndex] = GetA(Data, Data->CurrentFactorIndices[ThreadIndex]);
+        while (Data->UsedA.contains(Data->a[ThreadIndex]));
+        Data->AMutex.unlock();
+        uint32_t NumPrimesInFactorBase = Data->FactorBase.size();
+        uint32_t NumFactorsOfA = Data->FactorOfABits.size();
+        std::vector<uint32_t> &CurrentFactorIndices = Data->CurrentFactorIndices[ThreadIndex];
+        std::vector<int64_t> &InverseOfAModP = Data->InverseOfAModP[ThreadIndex];
+        std::vector<BigInt> &B = Data->B[ThreadIndex];
+        std::vector<int64_t> &BTimesInverseA = Data->BTimesInverseA[ThreadIndex];
+        std::vector<int64_t> &RootsModP = Data->RootsModP[ThreadIndex];
+        BigInt &a = Data->a[ThreadIndex];
         
-        CurrentRoots[1] = Data->SqrtNModP[i] * InverseOfAModP[i];
-        CurrentRoots[1] *= 2;
-        CurrentRoots[1] += CurrentRoots[0];
-        CurrentRoots[1] %= Data->FactorBase[i];
-    }
-    GetSievePointers(Data, Data->SievePointers[ThreadIndex].data(), CurrentFactorIndices, RootsModP.data(), Data->Sieves[ThreadIndex].data());
-    Sieve(Data, a, CurrentFactorIndices, b, RootsModP.data(), Data->Sieves[ThreadIndex].data(), Data->SievePointers[ThreadIndex].data());
-    for (int i = 1; i < (1 << (NumFactorsOfA - 1)); i++)
-    {
-        uint32_t Index = 0;
-        while (((1 << Index) & i) == 0) Index++;
-        bool Add = Mask & (1 << Index);
-        Mask ^= (1 << Index);
-        if (!Add) b -= B[Index];
-        else b += B[Index];
-        CurrentRoots = RootsModP.data();
-        int64_t *CurrentBTimesInverseOfA = BTimesInverseA.data() + Index * NumPrimesInFactorBase;
-        NextFactorOfA = CurrentFactorIndices.data();
-        for (uint32_t j = 0; j < NumPrimesInFactorBase; j++, CurrentRoots += 2, CurrentBTimesInverseOfA++)
+        for (int i = 0; i < NumPrimesInFactorBase; i++)
+            InverseOfAModP[i] = BinPow((a % Data->FactorBase[i]).Int(), Data->FactorBase[i] - 2, Data->FactorBase[i]);
+        for (int i = 0; i < NumFactorsOfA; i++)
         {
-            if (NextFactorOfA != FactorsOfAEnd && *NextFactorOfA == j)
+            int64_t Factor = Data->FactorBase[CurrentFactorIndices[i]];
+            BigInt AOverFactor = a / Factor;
+            B[i] = Data->SqrtNModP[CurrentFactorIndices[i]] * AOverFactor;
+            AOverFactor %= Factor;
+            B[i] *= BinPow(AOverFactor.Int(), Factor - 2, Factor);
+            B[i] %= a;
+        }
+        uint32_t Mask = 0;
+        BigInt b = static_cast<int64_t>(0);
+        for (int i = 0; i < NumFactorsOfA; i++)
+            b += B[i];
+        int64_t *ptr = BTimesInverseA.data();
+        for (int i = 0; i < NumFactorsOfA; i++)
+        {
+            for (int j = 0; j < NumPrimesInFactorBase; j++, ptr++)
+            {
+                BigInt Current = B[i] * InverseOfAModP[j];
+                Current %= Data->FactorBase[j];
+                *ptr = Current.Int();
+            }
+        }
+        for (int i = 0; i < NumFactorsOfA; i++)
+            B[i] *= 2ll;
+        int64_t *CurrentRoots = RootsModP.data();
+        uint32_t *NextFactorOfA = CurrentFactorIndices.data();
+        uint32_t *FactorsOfAEnd = NextFactorOfA + NumFactorsOfA;
+        for (uint32_t i = 0; i < NumPrimesInFactorBase; i++, CurrentRoots += 2)
+        {
+            if (NextFactorOfA != FactorsOfAEnd && *NextFactorOfA == i)
             {
                 NextFactorOfA++;
                 continue;
             }
-            CurrentRoots[0] += Data->FactorBase[j] * 2ll;
-            CurrentRoots[1] += Data->FactorBase[j] * 2ll;
-            if (!Add)
+            CurrentRoots[0] = Data->SqrtNModP[i] * InverseOfAModP[i];
+            CurrentRoots[0] %= Data->FactorBase[i];
+            for (int j = 0; j < NumFactorsOfA; j++)
             {
-                CurrentRoots[0] += *CurrentBTimesInverseOfA * 2ll;
-                CurrentRoots[0] %= Data->FactorBase[j];
-                CurrentRoots[1] += *CurrentBTimesInverseOfA * 2ll;
-                CurrentRoots[1] %= Data->FactorBase[j];
+                CurrentRoots[0] += BTimesInverseA[j * NumPrimesInFactorBase + i];
+                CurrentRoots[0] %= Data->FactorBase[i];
             }
-            else
-            {
-                CurrentRoots[0] -= *CurrentBTimesInverseOfA * 2ll;
-                CurrentRoots[0] %= Data->FactorBase[j];
-                CurrentRoots[1] -= *CurrentBTimesInverseOfA * 2ll;
-                CurrentRoots[1] %= Data->FactorBase[j];
-            }
+            CurrentRoots[0] %= Data->FactorBase[i];
+            CurrentRoots[0] = Data->FactorBase[i] - CurrentRoots[0];
+            CurrentRoots[0] %= Data->FactorBase[i];
+            
+            CurrentRoots[1] = Data->SqrtNModP[i] * InverseOfAModP[i];
+            CurrentRoots[1] *= 2;
+            CurrentRoots[1] += CurrentRoots[0];
+            CurrentRoots[1] %= Data->FactorBase[i];
         }
         GetSievePointers(Data, Data->SievePointers[ThreadIndex].data(), CurrentFactorIndices, RootsModP.data(), Data->Sieves[ThreadIndex].data());
         Sieve(Data, a, CurrentFactorIndices, b, RootsModP.data(), Data->Sieves[ThreadIndex].data(), Data->SievePointers[ThreadIndex].data());
+        for (int i = 1; i < (1 << (NumFactorsOfA - 1)); i++)
+        {
+            uint32_t Index = 0;
+            while (((1 << Index) & i) == 0) Index++;
+            bool Add = Mask & (1 << Index);
+            Mask ^= (1 << Index);
+            if (!Add) b -= B[Index];
+            else b += B[Index];
+            CurrentRoots = RootsModP.data();
+            int64_t *CurrentBTimesInverseOfA = BTimesInverseA.data() + Index * NumPrimesInFactorBase;
+            NextFactorOfA = CurrentFactorIndices.data();
+            for (uint32_t j = 0; j < NumPrimesInFactorBase; j++, CurrentRoots += 2, CurrentBTimesInverseOfA++)
+            {
+                if (NextFactorOfA != FactorsOfAEnd && *NextFactorOfA == j)
+                {
+                    NextFactorOfA++;
+                    continue;
+                }
+                CurrentRoots[0] += Data->FactorBase[j] * 2ll;
+                CurrentRoots[1] += Data->FactorBase[j] * 2ll;
+                if (!Add)
+                {
+                    CurrentRoots[0] += *CurrentBTimesInverseOfA * 2ll;
+                    CurrentRoots[0] %= Data->FactorBase[j];
+                    CurrentRoots[1] += *CurrentBTimesInverseOfA * 2ll;
+                    CurrentRoots[1] %= Data->FactorBase[j];
+                }
+                else
+                {
+                    CurrentRoots[0] -= *CurrentBTimesInverseOfA * 2ll;
+                    CurrentRoots[0] %= Data->FactorBase[j];
+                    CurrentRoots[1] -= *CurrentBTimesInverseOfA * 2ll;
+                    CurrentRoots[1] %= Data->FactorBase[j];
+                }
+            }
+            GetSievePointers(Data, Data->SievePointers[ThreadIndex].data(), CurrentFactorIndices, RootsModP.data(), Data->Sieves[ThreadIndex].data());
+            Sieve(Data, a, CurrentFactorIndices, b, RootsModP.data(), Data->Sieves[ThreadIndex].data(), Data->SievePointers[ThreadIndex].data());
+        }
+        
+        if (Data->Running && Data->Matrix.size() >= Data->FactorBase.size())
+        {
+            Data->MatrixMutex.lock();
+            std::sort(Data->Matrix.begin(), Data->Matrix.end());
+            Data->Matrix.resize(std::unique(Data->Matrix.begin(), Data->Matrix.end()) - Data->Matrix.begin());
+            if (Data->Matrix.size() >= Data->FactorBase.size() + 100)
+                Data->Running = false;
+            Data->MatrixMutex.unlock();
+        }
     }
 }
 
@@ -689,17 +711,19 @@ std::pair<BigInt, BigInt> LinearAlgebra(const BigInt &n, QuadraticSieveData *Dat
     std::pair<BigInt, BigInt> Result = std::make_pair(0, 0);
     std::mutex Mutex;
     auto ThreadLambda = [&](uint32_t Index) {
-        while (Index < NumThreads && !Finished)
+        while (Index < NumNullSpaces && !Finished)
         {
             BigInt A = 1, B = 1;
             for (int j = 0; j < Data->Matrix.size(); j++)
             {
+                if (Finished) return;
                 if ((1ull << Index) & NullSpaces[j])
                 {
                     A *= Data->Matrix[j].first.first;
                     B *= Data->Matrix[j].first.second;
                 }
             }
+            if (Finished) return;
             A = A.SquareRoot(); B = B.SquareRoot();
             BigInt gcd1 = gcd(n, (A - B).abs()), gcd2 = gcd(n, (A + B).abs());
             if (gcd1 != 1 && gcd1 != n)
@@ -711,6 +735,7 @@ std::pair<BigInt, BigInt> LinearAlgebra(const BigInt &n, QuadraticSieveData *Dat
                     return;
                 }
                 Result = std::make_pair(gcd1, n / gcd1);
+                Finished = true;
                 Mutex.unlock();
             }
             if (gcd2 != 1 && gcd2 != n)
@@ -722,6 +747,7 @@ std::pair<BigInt, BigInt> LinearAlgebra(const BigInt &n, QuadraticSieveData *Dat
                     return;
                 }
                 Result = std::make_pair(gcd2, n / gcd2);
+                Finished = true;
                 Mutex.unlock();
             }
             Index += NumThreads;
@@ -774,45 +800,13 @@ std::pair<BigInt, BigInt> QuadraticSieve(const BigInt &n, uint32_t NumThreads = 
         Data->SievePointers[i] = std::vector<uint8_t *>(Data->FactorBase.size() * 2);
     }
     Data->a.resize(NumThreads);
-    bool Finished = false;
+    Data->Running = true;
     std::chrono::high_resolution_clock::time_point beg = std::chrono::high_resolution_clock::now();
-    auto CompletionFunction = [&]() {
-        std::cout << "Sieving completed in " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - beg).count() << " milliseconds\nMatrix size: " << Data->Matrix.size() << "\nEstimated sieving time: " << (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - AlgorithmStart).count() * (Data->FactorBase.size() + 100)) / Data->Matrix.size() << std::endl;
-        beg = std::chrono::high_resolution_clock::now();
-        if (Data->Matrix.size() >= Data->FactorBase.size() + 100)
-        {
-            std::sort(Data->Matrix.begin(), Data->Matrix.end());
-            Data->Matrix.resize(std::unique(Data->Matrix.begin(), Data->Matrix.end()) - Data->Matrix.begin());
-            if (Data->Matrix.size() >= Data->FactorBase.size() + 100)
-            {
-                Finished = true;
-                return;
-            }
-        }
-        for (int i = 0; i < NumThreads; i++)
-        {
-            do Data->a[i] = GetA(Data.get(), Data->CurrentFactorIndices[i]);
-            while (Data->UsedA.contains(Data->a[i]));
-        }
-    };
-    std::barrier Barrier(NumThreads, CompletionFunction);
-    auto ThreadLambda = [&](uint32_t ThreadIndex) {
-        while (!Finished)
-        {
-            TraverseB(Data.get(), ThreadIndex);
-            Barrier.arrive_and_wait();
-        }
-    };
-    for (int i = 0; i < NumThreads; i++)
-    {
-        do Data->a[i] = GetA(Data.get(), Data->CurrentFactorIndices[i]);
-        while (Data->UsedA.contains(Data->a[i]));
-    }
     std::vector<std::thread> Threads;
     Threads.reserve(NumThreads - 1);
     for (uint32_t i = 0; i < NumThreads - 1; i++)
-        Threads.emplace_back(ThreadLambda, i);
-    ThreadLambda(NumThreads - 1);
+        Threads.emplace_back(TraverseB, Data.get(), i);
+    TraverseB(Data.get(), NumThreads - 1);
     for (int i = 0; i < Threads.size(); i++)
         Threads[i].join();
     
