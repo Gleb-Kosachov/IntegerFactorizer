@@ -16,7 +16,7 @@
 
 int main()
 {
-//    std::srand(std::time(NULL));
+    std::srand(std::time(NULL));
     try
     {
 //        std::string a, b; std::cin >> a >> b;
