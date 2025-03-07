@@ -111,7 +111,7 @@ BigInt SquareRootModP(const BigInt &a, int64_t p)
 
 int64_t ChoosePrimeBound(const BigInt &n)
 {
-    std::pair<uint32_t, int64_t> Values[] = { {30, 4000}, {40, 20000}, {60, 160000}, {80, 1300000}, {100, 2700000}, {110, 6300000} };
+    std::pair<uint32_t, int64_t> Values[] = { {30, 4000}, {40, 20000}, {60, 65000}, {80, 900000}, {100, 2700000}, {110, 6300000} };
     uint32_t Size = n.SizeInBase(10);
     for (int i = 0; i < 7; i++)
         if (std::max(Size, Values[i].first) - std::min(Size, Values[i].first) <= 3)
@@ -121,7 +121,7 @@ int64_t ChoosePrimeBound(const BigInt &n)
 
 int64_t ChooseSieveSize(const BigInt &n)
 {
-    std::pair<uint32_t, int64_t> Values[] = { {30, 65536}, {40, 65536}, {60, 65536}, {80, 3 * 65536}, {100, 9 * 65536}, {110, 13 * 65536} };
+    std::pair<uint32_t, int64_t> Values[] = { {30, 65536}, {40, 65536}, {60, 3 * 65536}, {80, 5 * 65536}, {100, 9 * 65536}, {110, 13 * 65536} };
     uint32_t Size = n.SizeInBase(10);
     for (int i = 0; i < 7; i++)
         if (std::max(Size, Values[i].first) - std::min(Size, Values[i].first) <= 3)
@@ -141,7 +141,7 @@ uint32_t ChooseDelta(const BigInt &n)
 
 uint32_t ChooseSmallPrimeBound(const BigInt &n)
 {
-    std::pair<uint32_t, int64_t> Values[] = { {30, 0}, {40, 10}, {60, 100}, {80, 200}, {100, 200}, {110, 200} };
+    std::pair<uint32_t, int64_t> Values[] = { {30, 0}, {40, 10}, {60, 40}, {80, 70}, {100, 200}, {110, 200} };
     uint32_t Size = n.SizeInBase(10);
     for (int i = 0; i < 7; i++)
         if (std::max(Size, Values[i].first) - std::min(Size, Values[i].first) <= 3)
