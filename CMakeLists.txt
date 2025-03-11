@@ -1,7 +1,6 @@
 cmake_minimum_required(VERSION 3.9.1)
 project(FactorizationOfLargeSemiprimes)
 set(CMAKE_CXX_STANDARD 17) 
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ./Build)
 set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 add_executable(IntegerFactorizer src/main.cpp src/BigInt.cpp src/BasicAlgorithms.cpp src/QuadraticSieve.cpp Dependencies/blanczos/src/blanczos.cpp)
 find_path(GMP_INCLUDE_DIR gmp.h)
