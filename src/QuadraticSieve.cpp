@@ -121,7 +121,7 @@ int64_t ChoosePrimeBound(const BigInt &n)
 
 int64_t ChooseSieveSize(const BigInt &n)
 {
-    std::pair<uint32_t, int64_t> Values[] = { {30, 65536}, {40, 65536}, {60, 3 * 65536}, {80, 5 * 65536}, {100, 9 * 65536}, {110, 13 * 65536} };
+    std::pair<uint32_t, int64_t> Values[] = { {30, 65536}, {40, 65536}, {60, 3 * 65536}, {80, 5 * 65536}, {100, 10 * 65536}, {110, 13 * 65536} };
     uint32_t Size = n.SizeInBase(10);
     for (int i = 0; i < 7; i++)
         if (std::max(Size, Values[i].first) - std::min(Size, Values[i].first) <= 3)
