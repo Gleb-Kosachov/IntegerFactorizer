@@ -48,7 +48,6 @@ int main()
             if (!LessThanTenMinutes) break;
             Time /= 500;
             out << sizes[i] << ": " << Time << "\n";
-            std::cout << __LINE__ << "\n";
         }
         out.close();
         
