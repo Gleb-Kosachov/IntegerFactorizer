@@ -39,7 +39,6 @@ void Rho(const BigInt &n)
 {
     while (true)
     {
-        std::cout << "Starting Pollard's Rho\n";
         BigInt x = BigInt::Random(n - 2) + 2;
         BigInt y = x;
         BigInt c = BigInt::Random(n - 1) + 1;

@@ -330,11 +330,11 @@ BigInt GetA(QuadraticSieveData *Data, std::vector<uint32_t> &FactorsOfA)
     }
     int64_t TargetLastDivisor = (Data->OptimalValueOfA / a).Int();
     uint32_t Left = std::lower_bound(Data->FactorBase.begin(), Data->FactorBase.end(), TargetLastDivisor) - Data->FactorBase.begin();
-    while (Data->FactorBase[Left] > TargetLastDivisor) Left--;
+    while (Left == Data->FactorBase.size() || Data->FactorBase[Left] > TargetLastDivisor) Left--;
     uint32_t Right = Left + 1;
     while (true)
     {
-        if (TargetLastDivisor - Data->FactorBase[Left] <= Data->FactorBase[Right] - TargetLastDivisor)
+        if (Right == Data->FactorBase.size() || TargetLastDivisor - Data->FactorBase[Left] <= Data->FactorBase[Right] - TargetLastDivisor)
         {
             if (std::find(FactorsOfA.begin(), FactorsOfA.end() - 1, Left) == FactorsOfA.end() - 1)
             {
